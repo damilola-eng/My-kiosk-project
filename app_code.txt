@@ -1,0 +1,1247 @@
+import { useState, useEffect, useCallback } from "react";
+
+// ─────────────────────────────────────────────
+// INITIAL DATA
+// ─────────────────────────────────────────────
+const ROLES = ["Admin", "Nurse", "Doctor", "Pharmacist", "Patient"];
+const QUEUE_STATES = [
+  "AWAITING_TRIAGE",
+  "AWAITING_DOCTOR",
+  "AWAITING_DOCTOR_REVIEW",
+  "AWAITING_PHARMACY",
+  "DISCHARGED",
+];
+const STATE_LABELS = {
+  AWAITING_TRIAGE: "Awaiting Triage",
+  AWAITING_DOCTOR: "Awaiting Doctor",
+  AWAITING_DOCTOR_REVIEW: "Doctor Review",
+  AWAITING_PHARMACY: "Awaiting Pharmacy",
+  DISCHARGED: "Discharged",
+};
+const STATE_COLORS = {
+  AWAITING_TRIAGE: "#f59e0b",
+  AWAITING_DOCTOR: "#3b82f6",
+  AWAITING_DOCTOR_REVIEW: "#06b6d4",
+  AWAITING_PHARMACY: "#ec4899",
+  DISCHARGED: "#10b981",
+};
+
+const DEFAULT_DRUGS = [
+  { id: 1, name: "Paracetamol 500mg", stock: 120 },
+  { id: 2, name: "Amoxicillin 250mg", stock: 80 },
+  { id: 3, name: "Ibuprofen 400mg", stock: 95 },
+  { id: 4, name: "Metformin 500mg", stock: 60 },
+  { id: 5, name: "Amlodipine 5mg", stock: 45 },
+  { id: 6, name: "Omeprazole 20mg", stock: 70 },
+  { id: 7, name: "Ciprofloxacin 500mg", stock: 55 },
+  { id: 8, name: "Lisinopril 10mg", stock: 30 },
+  { id: 9, name: "Atorvastatin 20mg", stock: 40 },
+  { id: 10, name: "Azithromycin 500mg", stock: 25 },
+  { id: 11, name: "Metronidazole 400mg", stock: 85 },
+  { id: 12, name: "Artemether-Lumefantrine", stock: 50 },
+];
+
+
+
+const SEED_PATIENTS = [
+  { id: 1, name: "Amara Okafor", age: 34, complaint: "Fever & Headache", temperature: 38.2, weight: 62.5, state: "AWAITING_DOCTOR", doctor: "Dr. Chidi", vitals: true },
+  { id: 2, name: "Bola Adeyemi", age: 52, complaint: "Chest Pain", temperature: 37.1, weight: 78.0, state: "AWAITING_TRIAGE", doctor: null, vitals: true },
+  { id: 3, name: "Emeka Nwosu", age: 28, complaint: "Malaria Symptoms", temperature: 39.1, weight: 70.0, state: "AWAITING_DOCTOR_REVIEW", doctor: "Dr. Chidi", vitals: true },
+  { id: 4, name: "Fatima Musa", age: 41, complaint: "Diabetes Review", temperature: 36.6, weight: 65.0, state: "AWAITING_PHARMACY", doctor: "Dr. Chidi", vitals: true },
+  { id: 5, name: "Chuka Eze", age: 19, complaint: "Sore Throat", temperature: 37.8, weight: 68.0, state: "DISCHARGED", doctor: "Dr. Chidi", vitals: true },
+];
+
+const SEED_USERS = [
+  { id: 1, name: "Admin User", role: "Admin", pin: "0000" },
+  { id: 2, name: "Nurse Adaeze", role: "Nurse", pin: "1111" },
+  { id: 3, name: "Dr. Chidi", role: "Doctor", pin: "2222" },
+  { id: 5, name: "Pharmacist Kemi", role: "Pharmacist", pin: "4444" },
+];
+
+// ─────────────────────────────────────────────
+// ICONS (inline SVG)
+// ─────────────────────────────────────────────
+const Icon = ({ d, size = 18, color = "currentColor", strokeWidth = 2 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <path d={d} />
+  </svg>
+);
+
+const Icons = {
+  users: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
+  activity: "M22 12h-4l-3 9L9 3l-3 9H2",
+  pill: "M10.5 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v7.5M12 12H2M12 12V4M22 19a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM19 16v6M16 19h6",
+  flask: "M10 2v7.31l-3.88 8.56A2 2 0 0 0 7.93 20h8.14a2 2 0 0 0 1.81-2.13L14 9.31V2M8.5 2h7M6 12h12",
+  shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+  logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
+  plus: "M12 5v14M5 12h14",
+  check: "M20 6 9 17l-5-5",
+  x: "M18 6 6 18M6 6l12 12",
+  thermometer: "M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z",
+  weight: "M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v1a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM12 17v-4M8 21h8M8 21a2 2 0 0 0 0-4h8a2 2 0 0 0 0 4",
+  home: "m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+  clock: "M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zM12 6v6l4 2",
+  arrow: "M5 12h14M12 5l7 7-7 7",
+  lock: "M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4",
+  wifi: "M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01",
+  eye: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z",
+  chart: "M18 20V10M12 20V4M6 20v-6",
+  refresh: "M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
+};
+
+// ─────────────────────────────────────────────
+// COMPONENTS
+// ─────────────────────────────────────────────
+const Badge = ({ state }) => (
+  <span style={{
+    background: STATE_COLORS[state] + "22",
+    color: STATE_COLORS[state],
+    border: `1px solid ${STATE_COLORS[state]}44`,
+    borderRadius: 6,
+    padding: "2px 8px",
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: 0.5,
+    whiteSpace: "nowrap",
+  }}>
+    {STATE_LABELS[state]}
+  </span>
+);
+
+const Card = ({ children, style = {} }) => (
+  <div style={{
+    background: "#1a1f2e",
+    border: "1px solid #2a3045",
+    borderRadius: 12,
+    padding: 20,
+    ...style,
+  }}>
+    {children}
+  </div>
+);
+
+const StatCard = ({ label, value, icon, color = "#00d4aa" }) => (
+  <Card style={{ display: "flex", alignItems: "center", gap: 16 }}>
+    <div style={{
+      background: color + "18",
+      borderRadius: 10,
+      padding: 12,
+      color,
+      flexShrink: 0,
+    }}>
+      <Icon d={Icons[icon]} size={22} color={color} />
+    </div>
+    <div>
+      <div style={{ color: "#8892a4", fontSize: 12, marginBottom: 4 }}>{label}</div>
+      <div style={{ color: "#e8edf5", fontSize: 24, fontWeight: 800 }}>{value}</div>
+    </div>
+  </Card>
+);
+
+const Button = ({ children, onClick, variant = "primary", small = false, disabled = false, style = {} }) => {
+  const base = {
+    border: "none",
+    borderRadius: 8,
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontWeight: 600,
+    fontSize: small ? 12 : 13,
+    padding: small ? "6px 12px" : "10px 18px",
+    opacity: disabled ? 0.5 : 1,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    transition: "all 0.15s",
+    ...style,
+  };
+  const variants = {
+    primary: { background: "#00d4aa", color: "#0d1117" },
+    danger: { background: "#ef4444", color: "#fff" },
+    outline: { background: "transparent", color: "#8892a4", border: "1px solid #2a3045" },
+    ghost: { background: "#2a3045", color: "#e8edf5" },
+    warning: { background: "#f59e0b", color: "#0d1117" },
+    purple: { background: "#8b5cf6", color: "#fff" },
+    pink: { background: "#ec4899", color: "#fff" },
+  };
+  return (
+    <button onClick={disabled ? undefined : onClick} style={{ ...base, ...variants[variant] }}>
+      {children}
+    </button>
+  );
+};
+
+const Input = ({ placeholder, value, onChange, type = "text", style = {} }) => (
+  <input
+    type={type}
+    placeholder={placeholder}
+    value={value}
+    onChange={e => onChange(e.target.value)}
+    style={{
+      background: "#111827",
+      border: "1px solid #2a3045",
+      borderRadius: 8,
+      color: "#e8edf5",
+      padding: "9px 13px",
+      fontSize: 13,
+      outline: "none",
+      width: "100%",
+      boxSizing: "border-box",
+      ...style,
+    }}
+  />
+);
+
+const Select = ({ value, onChange, options, style = {} }) => (
+  <select
+    value={value}
+    onChange={e => onChange(e.target.value)}
+    style={{
+      background: "#111827",
+      border: "1px solid #2a3045",
+      borderRadius: 8,
+      color: "#e8edf5",
+      padding: "9px 13px",
+      fontSize: 13,
+      outline: "none",
+      width: "100%",
+      boxSizing: "border-box",
+      ...style,
+    }}
+  >
+    {options.map(o => (
+      <option key={o.value} value={o.value}>{o.label}</option>
+    ))}
+  </select>
+);
+
+const Modal = ({ title, onClose, children }) => (
+  <div style={{
+    position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    zIndex: 1000, padding: 20,
+  }}>
+    <div style={{
+      background: "#1a1f2e", border: "1px solid #2a3045", borderRadius: 16,
+      padding: 28, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <h3 style={{ margin: 0, color: "#e8edf5", fontSize: 16, fontWeight: 700 }}>{title}</h3>
+        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#8892a4" }}>
+          <Icon d={Icons.x} size={20} />
+        </button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────
+// VIEWS
+// ─────────────────────────────────────────────
+
+// KIOSK VIEW
+function KioskView({ patients, setPatients, patientCounter, setPatientCounter }) {
+  const [step, setStep] = useState("idle"); // idle | scanning | result | registered
+  const [name, setName] = useState("");
+  const [age, setAge] = useState("");
+  const [complaint, setComplaint] = useState("");
+  const [temp, setTemp] = useState(null);
+  const [weight, setWeight] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [lcd, setLcd] = useState(["MedFlow Kiosk v1.0", "Ready for Patient", "Stand on platform", "Press START"]);
+
+  const startScan = () => {
+    if (!name || !age || !complaint) return;
+    setScanning(true);
+    setStep("scanning");
+    setLcd(["Scanning...", "Please stand still", "Reading sensors...", ""]);
+    let t = 0;
+    const interval = setInterval(() => {
+      t++;
+      if (t === 1) setLcd(["Temperature...", "Please hold still", "Contactless scan", "MLX90614 active"]);
+      if (t === 2) {
+        const randTemp = (36.2 + Math.random() * 3).toFixed(1);
+        setTemp(parseFloat(randTemp));
+        setLcd([`Temp: ${randTemp}°C`, "Measuring weight...", "Step on platform", "HX711 reading..."]);
+      }
+      if (t === 3) {
+        const randWeight = (45 + Math.random() * 60).toFixed(1);
+        setWeight(parseFloat(randWeight));
+        setLcd(["Scan Complete!", `Temp: ${temp || 37.2}°C`, `Weight: ${randWeight}kg`, "Uploading to cloud"]);
+      }
+      if (t === 4) {
+        clearInterval(interval);
+        setScanning(false);
+        setStep("result");
+        setLcd(["Upload OK!", "Patient registered", "Please see nurse", "Thank you"]);
+      }
+    }, 1000);
+  };
+
+  const registerPatient = () => {
+    const newPatient = {
+      id: patientCounter + 1,
+      name,
+      age: parseInt(age),
+      complaint,
+      temperature: temp,
+      weight,
+      state: "AWAITING_TRIAGE",
+      doctor: null,
+      vitals: true,
+      consultationNote: "",
+      prescriptions: [],
+      labTests: [],
+    };
+    setPatients(prev => [...prev, newPatient]);
+    setPatientCounter(c => c + 1);
+    setStep("registered");
+    setName(""); setAge(""); setComplaint("");
+  };
+
+  const reset = () => { setStep("idle"); setTemp(null); setWeight(null); setLcd(["MedFlow Kiosk v1.0", "Ready for Patient", "Stand on platform", "Press START"]); };
+
+  return (
+    <div style={{ maxWidth: 700, margin: "0 auto" }}>
+      <h2 style={{ color: "#00d4aa", marginBottom: 4, fontSize: 20, fontWeight: 800 }}>
+        Vital-Sign Kiosk
+      </h2>
+      <p style={{ color: "#8892a4", marginBottom: 24, fontSize: 13 }}>
+        Patient self-service terminal — ESP32-D + MLX90614 + HX711
+      </p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        {/* LCD Simulation */}
+        <Card style={{ fontFamily: "monospace", background: "#0a1a0a", border: "2px solid #1a4a1a" }}>
+          <div style={{ color: "#4ade80", fontSize: 11, marginBottom: 8, letterSpacing: 1 }}>LCD 20×4 DISPLAY</div>
+          {lcd.map((line, i) => (
+            <div key={i} style={{
+              color: "#86efac",
+              fontSize: 13,
+              padding: "2px 0",
+              minHeight: 20,
+              borderBottom: i < 3 ? "1px solid #1a3a1a" : "none",
+            }}>
+              {line || " "}
+            </div>
+          ))}
+          <div style={{ marginTop: 12, display: "flex", gap: 4 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: scanning ? "#4ade80" : "#1a3a1a", boxShadow: scanning ? "0 0 8px #4ade80" : "none" }} />
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: temp ? "#4ade80" : "#1a3a1a" }} />
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: weight ? "#4ade80" : "#1a3a1a" }} />
+          </div>
+        </Card>
+
+        {/* Sensor Readings */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <Card style={{ flex: 1 }}>
+            <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 8 }}>TEMPERATURE (MLX90614)</div>
+            <div style={{ color: temp ? (temp > 37.5 ? "#ef4444" : "#00d4aa") : "#2a3045", fontSize: 32, fontWeight: 800 }}>
+              {temp ? `${temp}°C` : "--.-°C"}
+            </div>
+            {temp && <div style={{ fontSize: 11, color: temp > 37.5 ? "#ef4444" : "#10b981", marginTop: 4 }}>
+              {temp > 37.5 ? "⚠ Elevated temperature" : "✓ Normal range"}
+            </div>}
+          </Card>
+          <Card style={{ flex: 1 }}>
+            <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 8 }}>WEIGHT (HX711 + Load Cells)</div>
+            <div style={{ color: weight ? "#00d4aa" : "#2a3045", fontSize: 32, fontWeight: 800 }}>
+              {weight ? `${weight}kg` : "--.-kg"}
+            </div>
+            {weight && <div style={{ fontSize: 11, color: "#10b981", marginTop: 4 }}>✓ Calibrated ±0.2kg</div>}
+          </Card>
+        </div>
+      </div>
+
+      {step === "idle" && (
+        <Card style={{ marginTop: 20 }}>
+          <h4 style={{ color: "#e8edf5", margin: "0 0 16px" }}>New Patient Registration</h4>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div>
+              <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 6 }}>FULL NAME</div>
+              <Input placeholder="Patient name" value={name} onChange={setName} />
+            </div>
+            <div>
+              <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 6 }}>AGE</div>
+              <Input placeholder="Age" value={age} onChange={setAge} type="number" />
+            </div>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 6 }}>CHIEF COMPLAINT</div>
+            <Input placeholder="Describe symptoms..." value={complaint} onChange={setComplaint} />
+          </div>
+          <Button onClick={startScan} disabled={!name || !age || !complaint}>
+            <Icon d={Icons.thermometer} size={15} /> Start Vital Scan
+          </Button>
+        </Card>
+      )}
+
+      {step === "scanning" && (
+        <Card style={{ marginTop: 20, textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
+          <div style={{ color: "#e8edf5", fontWeight: 700 }}>Scanning in progress...</div>
+          <div style={{ color: "#8892a4", fontSize: 13, marginTop: 8 }}>Please remain still</div>
+        </Card>
+      )}
+
+      {step === "result" && (
+        <Card style={{ marginTop: 20 }}>
+          <h4 style={{ color: "#00d4aa", margin: "0 0 16px" }}>✓ Scan Complete — Review & Register</h4>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+            <div>
+              <div style={{ color: "#8892a4", fontSize: 11 }}>NAME</div>
+              <div style={{ color: "#e8edf5", fontWeight: 600 }}>{name}</div>
+            </div>
+            <div>
+              <div style={{ color: "#8892a4", fontSize: 11 }}>TEMPERATURE</div>
+              <div style={{ color: temp > 37.5 ? "#ef4444" : "#10b981", fontWeight: 700 }}>{temp}°C</div>
+            </div>
+            <div>
+              <div style={{ color: "#8892a4", fontSize: 11 }}>WEIGHT</div>
+              <div style={{ color: "#10b981", fontWeight: 700 }}>{weight}kg</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Button onClick={registerPatient}>Register & Join Queue</Button>
+            <Button variant="outline" onClick={reset}>Reset</Button>
+          </div>
+        </Card>
+      )}
+
+      {step === "registered" && (
+        <Card style={{ marginTop: 20, textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+          <div style={{ color: "#10b981", fontWeight: 700, fontSize: 16 }}>Patient Registered Successfully</div>
+          <div style={{ color: "#8892a4", fontSize: 13, margin: "8px 0 16px" }}>
+            Patient has been added to the triage queue. Please see the nurse.
+          </div>
+          <Button onClick={reset}>Register Another Patient</Button>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// QUEUE MANAGEMENT VIEW
+function QueueView({ patients, setPatients, currentUser }) {
+  const [selectedState, setSelectedState] = useState("ALL");
+  const [assignModal, setAssignModal] = useState(null);
+  const [selectedDoctor, setSelectedDoctor] = useState("Dr. Chidi");
+  const [notification, setNotification] = useState(null);
+
+  const notify = (msg, type = "success") => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const advanceState = (patientId) => {
+    setPatients(prev => prev.map(p => {
+      if (p.id !== patientId) return p;
+      const idx = QUEUE_STATES.indexOf(p.state);
+      if (idx >= QUEUE_STATES.length - 1) return p;
+      const nextState = QUEUE_STATES[idx + 1];
+      notify(`${p.name} moved to ${STATE_LABELS[nextState]}`);
+      return { ...p, state: nextState };
+    }));
+  };
+
+  const assignDoctor = () => {
+    setPatients(prev => prev.map(p => {
+      if (p.id !== assignModal.id) return p;
+      return { ...p, doctor: selectedDoctor, state: "AWAITING_DOCTOR" };
+    }));
+    notify(`${assignModal.name} assigned to ${selectedDoctor}`);
+    setAssignModal(null);
+  };
+
+  const filtered = selectedState === "ALL"
+    ? patients
+    : patients.filter(p => p.state === selectedState);
+
+  const canAdvance = (p) => {
+    if (currentUser.role === "Nurse") return p.state === "AWAITING_TRIAGE";
+    if (currentUser.role === "Doctor") return ["AWAITING_DOCTOR", "AWAITING_DOCTOR_REVIEW"].includes(p.state);
+    if (currentUser.role === "Pharmacist") return p.state === "AWAITING_PHARMACY";
+    if (currentUser.role === "Admin") return p.state !== "DISCHARGED";
+    return false;
+  };
+
+  return (
+    <div>
+      {notification && (
+        <div style={{
+          position: "fixed", top: 20, right: 20, zIndex: 999,
+          background: notification.type === "success" ? "#10b981" : "#ef4444",
+          color: "#fff", padding: "12px 20px", borderRadius: 10,
+          fontWeight: 600, fontSize: 13, boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        }}>
+          {notification.msg}
+        </div>
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <div>
+          <h2 style={{ color: "#00d4aa", marginBottom: 4, fontSize: 20, fontWeight: 800 }}>Queue Management</h2>
+          <p style={{ color: "#8892a4", fontSize: 13 }}>Real-time patient flow — Socket.IO WebSocket</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 8px #10b981" }} />
+          <span style={{ color: "#10b981", fontSize: 12, fontWeight: 600 }}>LIVE</span>
+        </div>
+      </div>
+
+      {/* State Filter Tabs */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+        <button
+          onClick={() => setSelectedState("ALL")}
+          style={{
+            background: selectedState === "ALL" ? "#00d4aa" : "#1a1f2e",
+            color: selectedState === "ALL" ? "#0d1117" : "#8892a4",
+            border: "1px solid #2a3045",
+            borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600,
+          }}
+        >
+          All ({patients.length})
+        </button>
+        {QUEUE_STATES.map(state => {
+          const count = patients.filter(p => p.state === state).length;
+          return (
+            <button
+              key={state}
+              onClick={() => setSelectedState(state)}
+              style={{
+                background: selectedState === state ? STATE_COLORS[state] + "22" : "#1a1f2e",
+                color: selectedState === state ? STATE_COLORS[state] : "#8892a4",
+                border: `1px solid ${selectedState === state ? STATE_COLORS[state] + "44" : "#2a3045"}`,
+                borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontWeight: 600,
+              }}
+            >
+              {STATE_LABELS[state]} ({count})
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Patient List */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {filtered.length === 0 && (
+          <Card><div style={{ color: "#8892a4", textAlign: "center", padding: 20 }}>No patients in this queue</div></Card>
+        )}
+        {filtered.map(p => (
+          <Card key={p.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 20px" }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: "50%",
+              background: STATE_COLORS[p.state] + "22",
+              color: STATE_COLORS[p.state],
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontWeight: 800, fontSize: 14, flexShrink: 0,
+            }}>
+              {p.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                <span style={{ color: "#e8edf5", fontWeight: 700, fontSize: 14 }}>{p.name}</span>
+                <span style={{ color: "#8892a4", fontSize: 12 }}>Age {p.age}</span>
+                <Badge state={p.state} />
+              </div>
+              <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#8892a4" }}>
+                <span>🩺 {p.complaint}</span>
+                {p.temperature && <span>🌡 {p.temperature}°C</span>}
+                {p.weight && <span>⚖ {p.weight}kg</span>}
+                {p.doctor && <span>👨‍⚕️ {p.doctor}</span>}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              {p.state === "AWAITING_TRIAGE" && (currentUser.role === "Nurse" || currentUser.role === "Admin") && (
+                <Button small variant="warning" onClick={() => setAssignModal(p)}>
+                  Assign Doctor
+                </Button>
+              )}
+              {canAdvance(p) && p.state !== "AWAITING_TRIAGE" && (
+                <Button small onClick={() => advanceState(p.id)}>
+                  <Icon d={Icons.arrow} size={13} /> Advance
+                </Button>
+              )}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {assignModal && (
+        <Modal title={`Assign Doctor — ${assignModal.name}`} onClose={() => setAssignModal(null)}>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 6 }}>SELECT DOCTOR</div>
+            <Select
+              value={selectedDoctor}
+              onChange={setSelectedDoctor}
+              options={["Dr. Chidi", "Dr. Amara", "Dr. Uche"].map(d => ({ value: d, label: d }))}
+            />
+          </div>
+          <Button onClick={assignDoctor}>Confirm & Advance to Doctor Queue</Button>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// DOCTOR VIEW
+function DoctorView({ patients, setPatients, currentUser }) {
+  const [selected, setSelected] = useState(null);
+  const [note, setNote] = useState("");
+  const [drug, setDrug] = useState("1");
+  const [drugs] = useState(DEFAULT_DRUGS);
+  const [notification, setNotification] = useState(null);
+
+  const notify = (msg) => { setNotification(msg); setTimeout(() => setNotification(null), 3000); };
+
+  const myPatients = patients.filter(p =>
+    (p.state === "AWAITING_DOCTOR" || p.state === "AWAITING_DOCTOR_REVIEW") && p.doctor === currentUser.name
+  );
+
+  const saveNote = () => {
+    if (!selected || !note) return;
+    setPatients(prev => prev.map(p =>
+      p.id === selected.id ? { ...p, consultationNote: note } : p
+    ));
+    setSelected(prev => ({ ...prev, consultationNote: note }));
+    notify("Consultation note saved (AES-256-CBC encrypted)");
+  };
+
+  const prescribeDrug = () => {
+    if (!selected) return;
+    const d = drugs.find(x => x.id === parseInt(drug));
+    if (!d) return;
+    setPatients(prev => prev.map(p => {
+      if (p.id !== selected.id) return p;
+      const updated = { ...p, prescriptions: [...(p.prescriptions || []), { drug: d.name, status: "PENDING" }], state: "AWAITING_PHARMACY" };
+      setSelected(updated);
+      return updated;
+    }));
+    notify(`Prescription sent to pharmacy: ${d.name}`);
+  };
+
+  const discharge = () => {
+    if (!selected) return;
+    setPatients(prev => prev.map(p =>
+      p.id === selected.id ? { ...p, state: "DISCHARGED" } : p
+    ));
+    setSelected(null);
+    notify("Patient discharged");
+  };
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 20, alignItems: "start" }}>
+      {notification && (
+        <div style={{ position: "fixed", top: 20, right: 20, zIndex: 999, background: "#10b981", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 13 }}>
+          {notification}
+        </div>
+      )}
+
+      {/* Patient List */}
+      <div>
+        <h2 style={{ color: "#3b82f6", marginBottom: 4, fontSize: 18, fontWeight: 800 }}>My Patients</h2>
+        <p style={{ color: "#8892a4", fontSize: 12, marginBottom: 16 }}>{currentUser.name}</p>
+        {myPatients.length === 0 && <Card><div style={{ color: "#8892a4", fontSize: 13 }}>No patients assigned</div></Card>}
+        {myPatients.map(p => (
+          <Card key={p.id} style={{ marginBottom: 8, cursor: "pointer", border: selected?.id === p.id ? "1px solid #3b82f6" : "1px solid #2a3045" }}
+            onClick={() => { setSelected(p); setNote(p.consultationNote || ""); }}>
+            <div style={{ color: "#e8edf5", fontWeight: 700, marginBottom: 4 }}>{p.name}</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Badge state={p.state} />
+              <span style={{ color: "#8892a4", fontSize: 12 }}>{p.complaint}</span>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Consultation Panel */}
+      {selected ? (
+        <div>
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 20, marginBottom: 16 }}>
+              <div>
+                <div style={{ color: "#8892a4", fontSize: 11 }}>PATIENT</div>
+                <div style={{ color: "#e8edf5", fontWeight: 700, fontSize: 16 }}>{selected.name}, {selected.age}y</div>
+                <div style={{ color: "#8892a4", fontSize: 13 }}>{selected.complaint}</div>
+              </div>
+              <div style={{ display: "flex", gap: 20 }}>
+                <div>
+                  <div style={{ color: "#8892a4", fontSize: 11 }}>TEMP</div>
+                  <div style={{ color: selected.temperature > 37.5 ? "#ef4444" : "#10b981", fontWeight: 700 }}>{selected.temperature}°C</div>
+                </div>
+                <div>
+                  <div style={{ color: "#8892a4", fontSize: 11 }}>WEIGHT</div>
+                  <div style={{ color: "#10b981", fontWeight: 700 }}>{selected.weight}kg</div>
+                </div>
+              </div>
+            </div>
+            <Badge state={selected.state} />
+          </Card>
+
+          {/* Consultation Note */}
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 8 }}>
+              CONSULTATION NOTES <span style={{ color: "#2a3045" }}>🔒 AES-256-CBC Encrypted</span>
+            </div>
+            <textarea
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="Clinical findings, diagnosis, management plan..."
+              style={{
+                background: "#111827", border: "1px solid #2a3045", borderRadius: 8,
+                color: "#e8edf5", padding: 12, fontSize: 13, width: "100%",
+                minHeight: 100, resize: "vertical", outline: "none", boxSizing: "border-box",
+              }}
+            />
+            <div style={{ marginTop: 10 }}>
+              <Button small onClick={saveNote}>Save Note</Button>
+            </div>
+          </Card>
+
+          {/* Actions */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
+            <Card>
+              <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 8 }}>PRESCRIBE MEDICATION</div>
+              <Select value={drug} onChange={setDrug} options={DEFAULT_DRUGS.map(d => ({ value: String(d.id), label: d.name }))} />
+              <div style={{ marginTop: 10 }}>
+                <Button small variant="pink" onClick={prescribeDrug}>
+                  <Icon d={Icons.pill} size={13} /> Prescribe
+                </Button>
+              </div>
+              {selected.prescriptions?.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  {selected.prescriptions.map((rx, i) => (
+                    <div key={i} style={{ fontSize: 12, color: "#8892a4", padding: "4px 0", borderTop: "1px solid #2a3045" }}>
+                      {rx.drug} — <span style={{ color: rx.status === "DISPENSED" ? "#10b981" : "#f59e0b" }}>{rx.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+
+          <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+            <Button variant="danger" onClick={discharge}>Discharge Patient</Button>
+          </div>
+        </div>
+      ) : (
+        <Card style={{ textAlign: "center", padding: 60 }}>
+          <div style={{ color: "#2a3045", fontSize: 40, marginBottom: 12 }}>👨‍⚕️</div>
+          <div style={{ color: "#8892a4" }}>Select a patient to begin consultation</div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// PHARMACY VIEW
+function PharmacyView({ patients, setPatients }) {
+  const [drugs, setDrugs] = useState(DEFAULT_DRUGS);
+  const [notification, setNotification] = useState(null);
+  const notify = (msg, type = "success") => { setNotification({ msg, type }); setTimeout(() => setNotification(null), 3000); };
+
+  const rxPatients = patients.filter(p => p.state === "AWAITING_PHARMACY");
+
+  const dispense = (patientId, rxIdx) => {
+    const patient = patients.find(p => p.id === patientId);
+    const rx = patient?.prescriptions?.[rxIdx];
+    if (!rx) return;
+
+    const drug = drugs.find(d => d.name === rx.drug);
+    if (drug && drug.stock <= 0) {
+      notify(`Out of stock: ${rx.drug}`, "error");
+      return;
+    }
+
+    // Atomic: decrement stock, mark dispensed, advance state
+    setDrugs(prev => prev.map(d => d.name === rx.drug ? { ...d, stock: d.stock - 1 } : d));
+    setPatients(prev => prev.map(p => {
+      if (p.id !== patientId) return p;
+      const prescriptions = p.prescriptions.map((r, i) => i === rxIdx ? { ...r, status: "DISPENSED" } : r);
+      const allDispensed = prescriptions.every(r => r.status === "DISPENSED");
+      return { ...p, prescriptions, state: allDispensed ? "AWAITING_DOCTOR_REVIEW" : p.state };
+    }));
+    notify(`Dispensed: ${rx.drug}`);
+  };
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 20, alignItems: "start" }}>
+      {notification && (
+        <div style={{ position: "fixed", top: 20, right: 20, zIndex: 999, background: notification.type === "error" ? "#ef4444" : "#ec4899", color: "#fff", padding: "12px 20px", borderRadius: 10, fontWeight: 600, fontSize: 13 }}>
+          {notification.msg}
+        </div>
+      )}
+
+      {/* Prescription Worklist */}
+      <div>
+        <h2 style={{ color: "#ec4899", marginBottom: 4, fontSize: 20, fontWeight: 800 }}>Pharmacy Dispensing</h2>
+        <p style={{ color: "#8892a4", fontSize: 13, marginBottom: 20 }}>Prescription worklist — atomic inventory deduction</p>
+
+        {rxPatients.length === 0 && <Card><div style={{ color: "#8892a4", textAlign: "center", padding: 40 }}>No pending prescriptions</div></Card>}
+        {rxPatients.map(p => (
+          <Card key={p.id} style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12 }}>
+              <div style={{ color: "#e8edf5", fontWeight: 700 }}>{p.name}</div>
+              <Badge state={p.state} />
+            </div>
+            {(p.prescriptions || []).map((rx, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: "1px solid #2a3045" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: "#e8edf5", fontSize: 13, fontWeight: 600 }}>{rx.drug}</div>
+                  <div style={{ color: rx.status === "DISPENSED" ? "#10b981" : "#f59e0b", fontSize: 12 }}>{rx.status}</div>
+                </div>
+                {rx.status === "PENDING" && (
+                  <Button small variant="pink" onClick={() => dispense(p.id, i)}>
+                    <Icon d={Icons.check} size={13} /> Dispense
+                  </Button>
+                )}
+                {rx.status === "DISPENSED" && <span style={{ color: "#10b981", fontSize: 12 }}>✓ Dispensed</span>}
+              </div>
+            ))}
+          </Card>
+        ))}
+      </div>
+
+      {/* Drug Inventory */}
+      <div>
+        <Card>
+          <h3 style={{ color: "#e8edf5", margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>
+            Drug Inventory
+          </h3>
+          {drugs.map(d => (
+            <div key={d.id} style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "8px 0", borderTop: "1px solid #2a3045", fontSize: 12,
+            }}>
+              <span style={{ color: "#8892a4" }}>{d.name}</span>
+              <span style={{
+                fontWeight: 700,
+                color: d.stock > 20 ? "#10b981" : d.stock > 5 ? "#f59e0b" : "#ef4444",
+              }}>
+                {d.stock}
+              </span>
+            </div>
+          ))}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ADMIN VIEW
+function AdminView({ patients, users }) {
+  const stats = {
+    total: patients.length,
+    triage: patients.filter(p => p.state === "AWAITING_TRIAGE").length,
+    active: patients.filter(p => !["DISCHARGED"].includes(p.state)).length,
+    discharged: patients.filter(p => p.state === "DISCHARGED").length,
+  };
+
+  return (
+    <div>
+      <h2 style={{ color: "#00d4aa", marginBottom: 4, fontSize: 20, fontWeight: 800 }}>Admin Dashboard</h2>
+      <p style={{ color: "#8892a4", fontSize: 13, marginBottom: 20 }}>System overview — Role-based access control (RBAC)</p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+        <StatCard label="Total Patients" value={stats.total} icon="users" color="#00d4aa" />
+        <StatCard label="In Triage" value={stats.triage} icon="clock" color="#f59e0b" />
+        <StatCard label="Active" value={stats.active} icon="activity" color="#3b82f6" />
+        <StatCard label="Discharged" value={stats.discharged} icon="check" color="#10b981" />
+      </div>
+
+      {/* Queue Distribution */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+        <Card>
+          <h3 style={{ color: "#e8edf5", margin: "0 0 16px", fontSize: 14, fontWeight: 700 }}>Queue Distribution</h3>
+          {QUEUE_STATES.map(state => {
+            const count = patients.filter(p => p.state === state).length;
+            const pct = stats.total > 0 ? (count / stats.total) * 100 : 0;
+            return (
+              <div key={state} style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ color: "#8892a4", fontSize: 12 }}>{STATE_LABELS[state]}</span>
+                  <span style={{ color: STATE_COLORS[state], fontSize: 12, fontWeight: 700 }}>{count}</span>
+                </div>
+                <div style={{ height: 6, background: "#2a3045", borderRadius: 3 }}>
+                  <div style={{ height: "100%", width: `${pct}%`, background: STATE_COLORS[state], borderRadius: 3, transition: "width 0.5s" }} />
+                </div>
+              </div>
+            );
+          })}
+        </Card>
+
+        {/* Users & Roles */}
+        <Card>
+          <h3 style={{ color: "#e8edf5", margin: "0 0 16px", fontSize: 14, fontWeight: 700 }}>Staff Accounts (JWT Protected)</h3>
+          {users.map(u => (
+            <div key={u.id} style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "8px 0", borderTop: "1px solid #2a3045",
+            }}>
+              <div>
+                <div style={{ color: "#e8edf5", fontSize: 13 }}>{u.name}</div>
+                <div style={{ color: "#8892a4", fontSize: 11 }}>{u.role}</div>
+              </div>
+              <div style={{
+                background: "#00d4aa22", color: "#00d4aa",
+                border: "1px solid #00d4aa44",
+                borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 600,
+              }}>ACTIVE</div>
+            </div>
+          ))}
+        </Card>
+      </div>
+
+      {/* Security Info */}
+      <Card>
+        <h3 style={{ color: "#e8edf5", margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>
+          <Icon d={Icons.shield} size={15} color="#00d4aa" /> Security Architecture
+        </h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+          {[
+            { label: "Auth", value: "JWT Bearer Tokens", icon: "lock" },
+            { label: "Password Hashing", value: "Argon2id", icon: "shield" },
+            { label: "EHR Encryption", value: "AES-256-CBC", icon: "eye" },
+            { label: "Transport", value: "HTTPS / WSS", icon: "wifi" },
+            { label: "Real-Time", value: "Socket.IO WebSocket", icon: "activity" },
+            { label: "Database", value: "PostgreSQL (Docker)", icon: "chart" },
+          ].map(item => (
+            <div key={item.label} style={{ background: "#111827", borderRadius: 8, padding: 12 }}>
+              <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 4 }}>{item.label}</div>
+              <div style={{ color: "#00d4aa", fontSize: 13, fontWeight: 600 }}>{item.value}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// PATIENT VIEW
+function PatientView({ patients, currentUser }) {
+  // Find a patient matching the user (simplified: show all discharged or in queue)
+  const myRecord = patients.find(p => p.name.toLowerCase().includes("amara") || p.id === 1);
+
+  return (
+    <div style={{ maxWidth: 600, margin: "0 auto" }}>
+      <h2 style={{ color: "#00d4aa", marginBottom: 4, fontSize: 20, fontWeight: 800 }}>Patient Portal</h2>
+      <p style={{ color: "#8892a4", fontSize: 13, marginBottom: 20 }}>Your health journey — view queue status & records</p>
+
+      {myRecord ? (
+        <div>
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ color: "#8892a4", fontSize: 11 }}>PATIENT</div>
+              <div style={{ color: "#e8edf5", fontSize: 20, fontWeight: 800 }}>{myRecord.name}</div>
+              <div style={{ color: "#8892a4", fontSize: 13 }}>Age: {myRecord.age} • {myRecord.complaint}</div>
+            </div>
+            <Badge state={myRecord.state} />
+          </Card>
+
+          {/* Queue Progress */}
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 16 }}>YOUR JOURNEY</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", overflowX: "auto", paddingBottom: 8 }}>
+              {QUEUE_STATES.map((state, i) => {
+                const idx = QUEUE_STATES.indexOf(myRecord.state);
+                const done = i < idx;
+                const current = i === idx;
+                return (
+                  <div key={state} style={{ display: "flex", alignItems: "center" }}>
+                    <div style={{ textAlign: "center", minWidth: 80 }}>
+                      <div style={{
+                        width: 32, height: 32, borderRadius: "50%",
+                        background: done ? "#10b981" : current ? STATE_COLORS[state] : "#2a3045",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        margin: "0 auto 6px",
+                        fontSize: 14,
+                        boxShadow: current ? `0 0 12px ${STATE_COLORS[state]}` : "none",
+                      }}>
+                        {done ? "✓" : i + 1}
+                      </div>
+                      <div style={{ color: current ? STATE_COLORS[state] : "#8892a4", fontSize: 10, fontWeight: current ? 700 : 400 }}>
+                        {STATE_LABELS[state].split(" ").slice(-1)[0]}
+                      </div>
+                    </div>
+                    {i < QUEUE_STATES.length - 1 && (
+                      <div style={{ width: 20, height: 2, background: done ? "#10b981" : "#2a3045", flexShrink: 0 }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          {/* Vitals */}
+          {myRecord.vitals && (
+            <Card style={{ marginBottom: 16 }}>
+              <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 12 }}>VITAL SIGNS (Kiosk Recording)</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div>
+                  <div style={{ color: "#8892a4", fontSize: 12 }}>Temperature</div>
+                  <div style={{ color: myRecord.temperature > 37.5 ? "#ef4444" : "#10b981", fontSize: 22, fontWeight: 800 }}>{myRecord.temperature}°C</div>
+                </div>
+                <div>
+                  <div style={{ color: "#8892a4", fontSize: 12 }}>Weight</div>
+                  <div style={{ color: "#10b981", fontSize: 22, fontWeight: 800 }}>{myRecord.weight}kg</div>
+                </div>
+              </div>
+            </Card>
+          )}
+        </div>
+      ) : (
+        <Card><div style={{ color: "#8892a4", textAlign: "center", padding: 40 }}>No patient record found. Please register at the kiosk.</div></Card>
+      )}
+
+      {/* All patients queue overview */}
+      <Card>
+        <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 12 }}>LIVE QUEUE OVERVIEW</div>
+        {patients.filter(p => p.state !== "DISCHARGED").map(p => (
+          <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderTop: "1px solid #2a3045" }}>
+            <span style={{ color: "#8892a4", fontSize: 13 }}>{p.name}</span>
+            <Badge state={p.state} />
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// LOGIN SCREEN
+// ─────────────────────────────────────────────
+function LoginScreen({ onLogin }) {
+  const [role, setRole] = useState("Admin");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+
+  const PINS = { Admin: "0000", Nurse: "1111", Doctor: "2222", Pharmacist: "4444", Patient: "1234" };
+  const NAMES = { Admin: "Admin User", Nurse: "Nurse Adaeze", Doctor: "Dr. Chidi", Pharmacist: "Pharmacist Kemi", Patient: "Amara Okafor" };
+
+  const handleLogin = () => {
+    if (pin === PINS[role]) {
+      onLogin({ role, name: NAMES[role] });
+    } else {
+      setError("Incorrect PIN. Try: " + PINS[role]);
+      setTimeout(() => setError(""), 3000);
+    }
+  };
+
+  return (
+    <div style={{
+      minHeight: "100vh", background: "#0d1117",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontFamily: "'Segoe UI', system-ui, sans-serif",
+    }}>
+      <div style={{ width: 380 }}>
+        {/* Logo */}
+        <div style={{ textAlign: "center", marginBottom: 40 }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: 16,
+            background: "linear-gradient(135deg, #00d4aa, #0066ff)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            margin: "0 auto 16px", fontSize: 28,
+          }}>
+            🏥
+          </div>
+          <h1 style={{ color: "#e8edf5", margin: 0, fontSize: 28, fontWeight: 900, letterSpacing: -1 }}>
+            Med<span style={{ color: "#00d4aa" }}>Flow</span>
+          </h1>
+          <p style={{ color: "#8892a4", fontSize: 13, margin: "6px 0 0" }}>
+            Cloud-Integrated Healthcare Ecosystem
+          </p>
+          <p style={{ color: "#4a5568", fontSize: 11, margin: "4px 0 0" }}>
+            Veritas University Abuja — B.Eng Computer Engineering
+          </p>
+        </div>
+
+        <Card>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 8 }}>SELECT ROLE</div>
+            <Select
+              value={role}
+              onChange={r => { setRole(r); setPin(""); }}
+              options={ROLES.map(r => ({ value: r, label: r }))}
+            />
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ color: "#8892a4", fontSize: 11, marginBottom: 8 }}>PIN / PASSWORD</div>
+            <Input type="password" placeholder="Enter PIN" value={pin} onChange={setPin} />
+            <div style={{ color: "#4a5568", fontSize: 11, marginTop: 6 }}>
+              Demo PIN for {role}: {({ Admin: "0000", Nurse: "1111", Doctor: "2222", Pharmacist: "4444", Patient: "1234" })[role]}
+            </div>
+            {error && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 6 }}>{error}</div>}
+          </div>
+          <Button onClick={handleLogin} style={{ width: "100%", justifyContent: "center" }}>
+            <Icon d={Icons.lock} size={15} /> Sign In with JWT
+          </Button>
+        </Card>
+
+        <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+          {["NestJS", "Next.js", "PostgreSQL", "Socket.IO", "Argon2"].map(t => (
+            <span key={t} style={{ background: "#1a1f2e", color: "#4a5568", borderRadius: 6, padding: "3px 8px", fontSize: 11 }}>{t}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// MAIN APP
+// ─────────────────────────────────────────────
+export default function MedFlowApp() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [patients, setPatients] = useState(SEED_PATIENTS.map(p => ({
+    ...p,
+    prescriptions: p.state === "AWAITING_PHARMACY" ? [{ drug: "Metformin 500mg", status: "PENDING" }] : [],
+    consultationNote: "",
+  })));
+  const [users] = useState(SEED_USERS);
+  const [patientCounter, setPatientCounter] = useState(5);
+  const [tick, setTick] = useState(0);
+
+  // Simulate real-time WebSocket updates
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(() => setTick(t => t + 1), 5000);
+    return () => clearInterval(interval);
+  }, [currentUser]);
+
+  const navItems = {
+    Admin: [
+      { id: "dashboard", label: "Dashboard", icon: "home" },
+      { id: "queue", label: "Queue", icon: "users" },
+    ],
+    Nurse: [
+      { id: "kiosk", label: "Kiosk", icon: "thermometer" },
+      { id: "queue", label: "Queue", icon: "users" },
+    ],
+    Doctor: [
+      { id: "consultation", label: "Consultation", icon: "activity" },
+      { id: "queue", label: "Queue", icon: "users" },
+    ],
+    Pharmacist: [
+      { id: "pharmacy", label: "Pharmacy", icon: "pill" },
+      { id: "queue", label: "Queue", icon: "users" },
+    ],
+    Patient: [
+      { id: "patient", label: "My Records", icon: "eye" },
+    ],
+  };
+
+  const defaultTabs = {
+    Admin: "dashboard", Nurse: "kiosk", Doctor: "consultation",
+    Pharmacist: "pharmacy", Patient: "patient",
+  };
+
+  const handleLogin = (user) => {
+    setCurrentUser(user);
+    setActiveTab(defaultTabs[user.role]);
+  };
+
+  if (!currentUser) return <LoginScreen onLogin={handleLogin} />;
+
+  const items = navItems[currentUser.role] || [];
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", background: "#0d1117", fontFamily: "'Segoe UI', system-ui, sans-serif", color: "#e8edf5" }}>
+      {/* Sidebar */}
+      <div style={{
+        width: 260,
+        background: "#111827",
+        borderRight: "1px solid #1a1f2e",
+        display: "flex",
+        flexDirection: "column",
+        position: "sticky",
+        top: 0,
+        height: "100vh"
+      }}>
+        <div style={{ padding: "24px", borderBottom: "1px solid #1a1f2e", display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, #00d4aa, #0066ff)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>
+            🏥
+          </div>
+          <span style={{ fontWeight: 900, fontSize: 18, letterSpacing: -0.5 }}>
+            Med<span style={{ color: "#00d4aa" }}>Flow</span>
+          </span>
+        </div>
+
+        <nav style={{ flex: 1, padding: "24px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+          {items.map(item => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              style={{
+                background: activeTab === item.id ? "#00d4aa15" : "transparent",
+                border: "none",
+                color: activeTab === item.id ? "#00d4aa" : "#8892a4",
+                borderRadius: 8,
+                padding: "12px 16px",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 600,
+                display: "flex", alignItems: "center", gap: 12,
+                transition: "all 0.2s",
+                textAlign: "left",
+                width: "100%"
+              }}
+            >
+              <Icon d={Icons[item.icon]} size={18} />
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        <div style={{ padding: "24px", borderTop: "1px solid #1a1f2e" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, marginBottom: 16 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 6px #10b981", animation: "pulse 2s infinite" }} />
+            <span style={{ color: "#10b981", fontWeight: 600 }}>System Live</span>
+          </div>
+          <div style={{ fontSize: 13, color: "#e8edf5", fontWeight: 600, marginBottom: 4 }}>{currentUser.name}</div>
+          <div style={{ fontSize: 12, color: "#8892a4", marginBottom: 16 }}>{currentUser.role}</div>
+          <Button style={{ width: "100%", justifyContent: "center" }} variant="outline" onClick={() => setCurrentUser(null)}>
+            <Icon d={Icons.logout} size={15} /> Sign Out
+          </Button>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+        {/* Top Header */}
+        <div style={{
+          height: 64,
+          borderBottom: "1px solid #1a1f2e",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 32px",
+          background: "#0d1117"
+        }}>
+          <h2 style={{ margin: 0, fontSize: 18, color: "#e8edf5", fontWeight: 600 }}>
+            {items.find(i => i.id === activeTab)?.label || "Dashboard"}
+          </h2>
+        </div>
+
+        {/* Scrollable Content */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "32px" }}>
+          <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+            {activeTab === "dashboard" && <AdminView patients={patients} users={users} />}
+            {activeTab === "kiosk" && <KioskView patients={patients} setPatients={setPatients} patientCounter={patientCounter} setPatientCounter={setPatientCounter} />}
+            {activeTab === "queue" && <QueueView patients={patients} setPatients={setPatients} currentUser={currentUser} />}
+            {activeTab === "consultation" && <DoctorView patients={patients} setPatients={setPatients} currentUser={currentUser} />}
+            {activeTab === "pharmacy" && <PharmacyView patients={patients} setPatients={setPatients} />}
+            {activeTab === "patient" && <PatientView patients={patients} currentUser={currentUser} />}
+          </div>
+        </div>
+      </div>
+      <style>{`
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        * { box-sizing: border-box; }
+        select option { background: #1a1f2e; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0d1117; }
+        ::-webkit-scrollbar-thumb { background: #2a3045; border-radius: 3px; }
+      `}</style>
+    </div>
+  );
+}
